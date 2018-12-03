@@ -69,13 +69,13 @@ export class Scout {
     this._postEvent(info);
 
     // kaia.btc.on() calls it
-    if (info.event === "disconnected") {
+    if (info.event === 'disconnected') {
       if (this.isConnected() && this.cmd.active) {
         this.postEvent({event: 'moveError', id: this.cmd.id});
       }
       this.cmd.id = -1;
       this.cmd.active = false;
-    } else if (info.event === "received") {
+    } else if (info.event === 'received') {
       try {
         // "TBCB5F20 L221 R280 f291 l209 rD3 b1F3 t0 i25 VFFF v0.2.1\r"
         var s = '{'+(' '+info.msg).replace(/\r/g, '').replace(/ ([TLRVIflrbtvi])/g, '","$1":"').substr(2)+'"}';
@@ -235,12 +235,12 @@ export class Scout {
     return newModel;
   }
 
-  _setModel(model: any) {
+  setModel(model: any) {
     Object.assign(this._model, model);
   }
 
-  _getModel() {
-   return this._model;
+  getModel() {
+    return this._model;
   };
 
   //  this.comm = function() {};
@@ -252,14 +252,14 @@ export class Scout {
     // args: stop, radius
 
     if (angle === undefined)
-      throw "Angle argument is required";
-    if (typeof angle !== "number")
-      throw "Angle must be a number (degrees)";
+      throw 'Angle argument is required';
+    if (typeof angle !== 'number')
+      throw 'Angle must be a number (degrees)';
     if (speed === undefined)
       speed = this.model.default.speed;
-    else if (typeof speed === "object") {
-      if (typeof args === "object")
-        throw "speed must be a number";
+    else if (typeof speed === 'object') {
+      if (typeof args === 'object')
+        throw 'speed must be a number';
       args = speed;
       speed = this.model.default.speed;
     }
@@ -267,17 +267,17 @@ export class Scout {
     // radius: inPlace, oneWheelStationary, meters to base midpoint
     args = args || {};
     halfBase = this.model.wheelBase / 2;
-    radius = args.radius || "oneWheelStationary";
-    if (radius === "inPlace")
+    radius = args.radius || 'oneWheelStationary';
+    if (radius === 'inPlace')
       radius = 0;
-    else if (radius === "oneWheelStationary")
+    else if (radius === 'oneWheelStationary')
       radius = halfBase;
-    else if (typeof radius !== "number")
-      throw "Invalid radius";
+    else if (typeof radius !== 'number')
+      throw 'Invalid radius';
     else if (radius < 0)
-      throw "Radius must be non-negative";
+      throw 'Radius must be non-negative';
     if (angle === 0)
-      throw "Angle may not be 0";
+      throw 'Angle may not be 0';
 
     angle = angle * Math.PI / 180;
     angleSign = Math.sign(angle);
@@ -310,12 +310,12 @@ export class Scout {
     if (typeof args === 'number')
       args = { 'distance': args };
     if (typeof args !== 'object')
-      throw "this.move(args[, speed]): args is object or number";
+      throw 'this.move(args[, speed]): args is object or number';
 
     // optional dist
     var distLeft, distRight;
     dist = args.distance || 0;
-    if (typeof args.distance === "number")
+    if (typeof args.distance === 'number')
       distLeft = distRight = args.distance;
     else {
       distRight = dist.right || 0;
@@ -329,20 +329,20 @@ export class Scout {
       args.speed = speed;
     speed = args.speed || 0;
 
-    if (typeof args.speed === "number")
+    if (typeof args.speed === 'number')
       speedLeft = speedRight = args.speed;
     else {
-      speedLeft = (typeof speed.left === "number") ? speed.left :
+      speedLeft = (typeof speed.left === 'number') ? speed.left :
         ((distLeft === 0) ? 0 : this.model.default.speed);
-      speedRight = (typeof speed.right === "number") ? speed.right :
+      speedRight = (typeof speed.right === 'number') ? speed.right :
         ((distRight === 0) ? 0 : this.model.default.speed);
     }
 
     if (speedRight > 1 || speedRight < -1 || speedLeft > 1 || speedLeft < -1)
-      throw "Relative speed must be within -1.0 ... 1.0";
+      throw 'Relative speed must be within -1.0 ... 1.0';
 
     if (distRight !== 0 && speedRight < 0 || distLeft !== 0 && speedLeft < 0)
-      throw "Speed value must be positive when distance is specified";
+      throw 'Speed value must be positive when distance is specified';
 
     if (distLeft !== 0)
       speedLeft = Math.abs(speedLeft) * Math.sign(distLeft);
@@ -364,10 +364,10 @@ export class Scout {
 
     // Don't use M for simplicity, easier test
     msg =
-      "L"  + (speedLeft  ? speedToHex(speedLeft)  : '') +
-      " R" + (speedRight ? speedToHex(speedRight) : '') + ' ' +
-      (brakeLeft  ? "G" : "g") + (distLeft  ? distToHex(distLeft)  : '') + ' ' +
-      (brakeRight ? "H" : "h") + (distRight ? distToHex(distRight) : '') + ' ';
+      'L'  + (speedLeft  ? speedToHex(speedLeft)  : '') +
+      ' R' + (speedRight ? speedToHex(speedRight) : '') + ' ' +
+      (brakeLeft  ? 'G' : 'g') + (distLeft  ? distToHex(distLeft)  : '') + ' ' +
+      (brakeRight ? 'H' : 'h') + (distRight ? distToHex(distRight) : '') + ' ';
 
     // Check if disconnected
     args.success = (this.isConnected());
@@ -375,14 +375,14 @@ export class Scout {
       if (distLeft !== 0 || distRight !== 0) {
         this.cmd.id++;
         this.cmd.active = true;
-        msg += "i" + this.cmd.id.toString(16);
+        msg += 'i' + this.cmd.id.toString(16);
         if (distLeft == distRight) {
           if (p)
-            msg += " P" + p.toString(16);
+            msg += ' P' + p.toString(16);
           if (i)
-            msg += " I" + i.toString(16);
+            msg += ' I' + i.toString(16);
         }
-        msg += " ";
+        msg += ' ';
       }
       args.cmd = {id: this.cmd.id};
 
@@ -399,7 +399,7 @@ export class Scout {
     // default brake=false
     args = args || {};
     if (typeof args !== 'object')
-      throw "this.stop(args) expects object or no argument";
+      throw 'this.stop(args) expects object or no argument';
 
     var brakeLeft, brakeRight;
     if (args.brake === true)
@@ -422,7 +422,7 @@ export class Scout {
     else
       throw "Invalid brake value";
     */
-    msg = (brakeLeft ? "Lffff " : "L ") + (brakeRight ? "Rffff " : "R ");
+    msg = (brakeLeft ? 'Lffff ' : 'L ') + (brakeRight ? 'Rffff ' : 'R ');
     this.send(msg);
     this.postEvent({event: 'stop', args: args});
   }
@@ -440,19 +440,19 @@ export class Scout {
   }
 
   _stopToSpeed(brake: boolean): any {
-    return brake ? "FF00" : "";
+    return brake ? 'FF00' : '';
   }
 
   _speedToHex(speed): any {
     if (speed === 0)
-      return "";
+      return '';
     speed = Math.round(speed * 255);
     return ((speed >= 0) ? speed : (0x10000 + speed)).toString(16);
   }
 
   _distToHex(dist: any): any {
     if (dist === 0)
-      return "";
+      return '';
     dist = Math.round(dist * this.model.encPulsesPerRev /
       (Math.PI * this.model.wheelDia));
     return ((dist >= 0) ? dist : (0x100000000 + dist)).toString(16);
