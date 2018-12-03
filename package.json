@@ -1,0 +1,53 @@
+{
+    "name": "kaia-scout.js",
+    "version": "0.0.1",
+    "description": "JS library for Kaia.ai Scout robot base",
+    "main": "./dist/kaia-scout-cjs.js",
+    "module": "./dist/kaia-scout.mjs",
+    "jsdelivr": "./dist/kaia-scout.mjs",
+    "unpkg": "./dist/kaia-scout.mjs",
+    "types": "./dist/kaia-scout.d.ts",
+    "scripts": {
+        "build": "del dist && rollup -c && npm run compress-iife && npm run create-compat && npm run compress-amd",
+        "compress-iife": "uglifyjs --compress --mangle -o dist/kaia-scout-iife.min.js dist/kaia-scout-iife.js",
+        "create-compat": "babel dist/kaia-scout-iife.js | uglifyjs --compress --mangle > dist/kaia-scout-iife-compat.min.js",
+        "compress-amd": "uglifyjs --compress --mangle -o dist/kaia-scout-amd.min.js dist/kaia-scout-amd.js"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/kaiaai/kaia-scout.js.git"
+    },
+    "keywords": [
+        "kaia.ai",
+        "robot",
+        "robot-base",
+        "robotics",
+        "arduino",
+        "deep learning",
+        "tensorflow",
+        "slam",
+        "robot",
+        "self-driving",
+        "image recognition",
+        "image classification",
+        "tensorflow.js",
+        "speech recognition",
+        "kaia",
+        "messaging"
+    ],
+    "author": "OOMWOO LLC",
+    "license": "Apache-2.0",
+    "bugs": {
+        "url": "https://github.com/kaiaai/kaia-scout.js/issues"
+    },
+    "homepage": "https://github.com/kaiaai/kaia-scout.js#readme",
+    "devDependencies": {
+        "babel-cli": "^6.26.0",
+        "babel-preset-env": "^1.6.1",
+        "del-cli": "^1.1.0",
+        "rollup": "^0.56.5",
+        "rollup-plugin-typescript2": "^0.12.0",
+        "typescript": "^2.8.0",
+        "uglify-es": "^3.3.9"
+    }
+}
