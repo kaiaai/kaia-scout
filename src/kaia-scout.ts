@@ -16,12 +16,12 @@
  */
 
 export class Scout {
-  serial: any;
+  _serial: any;
   _listener: any;
   _debug: boolean = false;
   _model: any;
-  cmd: any;
-  conn: any;
+  _cmd: any;
+  _conn: any;
   static _created: boolean = false;
 
   // TODO events {err: err, event: event, ...} signature
@@ -29,9 +29,9 @@ export class Scout {
   // TODO move, turn, stop(?) async
 
   constructor() {
-    if (Scout.singleton())
+    if (Scout._created)
       throw 'Only one instance allowed';
-    Scount._created = true;
+    Scout._created = true;
   }
 
   async init(params: any): Promise<any> {
@@ -42,8 +42,8 @@ export class Scout {
 
     // TODO remove : from Scout messages  
     this._initModel();
-    this.conn.autoDetect = true;
-    this.cmd = {id: -1, active: false};		
+    this._conn.autoDetect = true;
+    this._cmd = {id: -1, active: false};		
   }
 	
   setSerial(serial: any) {
@@ -53,10 +53,10 @@ export class Scout {
       this._serial = serial;
     }
     if (this._serial)
-      this._serial.setEventListener(serialEventListener);
+      this._serial.setEventListener(this._serialEventListener);
   }
 
-  write(text: string) {
+  send(text: string) {
     if (this._serial)
       throw 'Serial required';
     this._issueEvent({event: 'write', message: text});
@@ -66,18 +66,19 @@ export class Scout {
     return res.err;
   }
 
-  serialEventListener(err: any, info: any) {
+  _serialEventListener(err: any, info: any) {
     // Forward raw message
     this._issueEvent(info);
 
     // kaia.btc.on() calls it
     if (info.event === 'disconnected') {
-      if (this.isConnected() && this.cmd.active) {
-        this._issueEvent({event: 'moveError', id: this.cmd.id});
+      if (this.connected() && this._cmd.active) {
+        this._issueEvent({event: 'moveError', id: this._cmd.id});
       }
-      this.cmd.id = -1;
-      this.cmd.active = false;
+      this._cmd.id = -1;
+      this._cmd.active = false;
     } else if (info.event === 'received') {
+      let json;
       try {
         // "TBCB5F20 L221 R280 f291 l209 rD3 b1F3 t0 i25 VFFF v0.2.1\r"
         var s = '{'+(' '+info.msg).replace(/\r/g, '').replace(/ ([TLRVIflrbtvi])/g, '","$1":"').substr(2)+'"}';
@@ -89,23 +90,24 @@ export class Scout {
       if (!json.T || !json.L || !json.R || !json.f || !json.l ||
           !json.r || !json.b || !json.t)
         return; // Skip malformed message
-      var msg = {
-          timeStamp: parseInt(json.T, 16),
-          encLeft: encToSigned(parseInt(json.L, 16)),
-          encRight: encToSigned(parseInt(json.R, 16)),
-          distForward: parseInt(json.f, 16),
-          distLeft: parseInt(json.l, 16),
-          distRight: parseInt(json.r, 16),
-          distBack: parseInt(json.b, 16),
-          distTop: parseInt(json.t, 16),
-          cmd: {id: 0, active: false}
-        };
+      let msg: any;
+      msg = {
+        timeStamp: parseInt(json.T, 16),
+        encLeft: this._encToSigned(parseInt(json.L, 16)),
+        encRight: this._encToSigned(parseInt(json.R, 16)),
+        distForward: parseInt(json.f, 16),
+        distLeft: parseInt(json.l, 16),
+        distRight: parseInt(json.r, 16),
+        distBack: parseInt(json.b, 16),
+        distTop: parseInt(json.t, 16),
+        cmd: {id: 0, active: false}
+      };
       if (json.i) {
-        msg.cmd.id = parseInt(json.i, 16);
-        msg.cmd.active = false;
+        msg._cmd.id = parseInt(json.i, 16);
+        msg._cmd.active = false;
       } else if (json.I) {
-        msg.cmd.id = parseInt(json.I, 16);
-        msg.cmd.active = true;
+        msg._cmd.id = parseInt(json.I, 16);
+        msg._cmd.active = true;
       } else
         return; // Skip malformed message
         
@@ -116,20 +118,19 @@ export class Scout {
       this._issueEvent({event: 'parsed', msg: msg});
         
       // TODO move on('moveProgress')
-      if (!this.isConnected()) {
+      if (!this.connected()) {
         // (re)started receiving
-        this.cmd.id = msg.cmd.id;
-        this.cmd.active = msg.cmd.active;
-      } else if (this.cmd.active &&
-                 this.cmd.id === msg.cmd.id &&
-                 msg.cmd.active === false) {
-        this.cmd.active = false;
-        this._issueEvent({event: 'moveComplete', id: msg.cmd.id});        
+        this._cmd.id = msg._cmd.id;
+        this._cmd.active = msg._cmd.active;
+      } else if (this._cmd.active &&
+                 this._cmd.id === msg._cmd.id &&
+                 msg._cmd.active === false) {
+        this._cmd.active = false;
+        this._issueEvent({event: 'moveComplete', id: msg._cmd.id});        
       }
 
-      this.model = this.updateModel(
-        this.model, msg);
-      this._issueEvent({event: 'model', model: this.model});
+      this._model = this._updateModel(this._model, msg);
+      this._issueEvent({event: 'model', model: this._model});
     }
   }
 
@@ -181,7 +182,7 @@ export class Scout {
   _updateModel(model: any, msg: any): any {
     // TODO handle 32-bit encoder overflow
     var newModel = Object.assign({}, model);
-    encToMeters = Math.PI * model.wheelDia / model.encPulsesPerRev;
+    let encToMeters = Math.PI * model.wheelDia / model.encPulsesPerRev;
     newModel.time = msg.timeStamp / 1000000;
     newModel.dTime = newModel.time - model.time;
     newModel.encLeft = msg.encLeft * encToMeters;
@@ -197,10 +198,11 @@ export class Scout {
       return newModel;
     }
 
-    dEncLeft = newModel.encLeft - model.encLeft;
-    dEncRight = newModel.encRight - model.encRight;
+    let dX, dY, dHeading, dDistance, r;
+    let dEncLeft = newModel.encLeft - model.encLeft;
+    let dEncRight = newModel.encRight - model.encRight;
     if (Math.abs(dEncLeft - dEncRight) < model.epsilon) {
-      dEncAvg = (dEncLeft + dEncRight)/2;
+      let dEncAvg = (dEncLeft + dEncRight)/2;
       dX = dEncAvg * Math.sin(model.heading);
       dY = dEncAvg * Math.cos(model.heading);
       dHeading = 0;
@@ -229,8 +231,8 @@ export class Scout {
 
     newModel.speed = dDistance/newModel.dTime; // linear speed
     newModel.angularSpeed = dHeading/newModel.dTime;
-    dSpeed = newModel.speed - model.speed;
-    dAngularSpeed = newModel.angularSpeed - model.angularSpeed;
+    let dSpeed = newModel.speed - model.speed;
+    let dAngularSpeed = newModel.angularSpeed - model.angularSpeed;
     newModel.accel = dSpeed/newModel.dTime; // linear acceleration
     newModel.angularAccel = dAngularSpeed/newModel.dTime;
 
@@ -246,7 +248,7 @@ export class Scout {
   };
 
   //  this.comm = function() {};
-  //  this.cmd = function() {};
+  //  this._cmd = function() {};
   //  this.comm.conn = function() {};
   
   turn(angle: any, speed: any, args: any): any {
@@ -258,18 +260,18 @@ export class Scout {
     if (typeof angle !== 'number')
       throw 'Angle must be a number (degrees)';
     if (speed === undefined)
-      speed = this.model.default.speed;
+      speed = this._model.default.speed;
     else if (typeof speed === 'object') {
       if (typeof args === 'object')
-        throw 'speed must be a number';
+        throw 'Speed must be a number';
       args = speed;
-      speed = this.model.default.speed;
+      speed = this._model.default.speed;
     }
 
     // radius: inPlace, oneWheelStationary, meters to base midpoint
     args = args || {};
-    halfBase = this.model.wheelBase / 2;
-    radius = args.radius || 'oneWheelStationary';
+    let halfBase = this._model.wheelBase / 2;
+    let radius = args.radius || 'oneWheelStationary';
     if (radius === 'inPlace')
       radius = 0;
     else if (radius === 'oneWheelStationary')
@@ -282,14 +284,15 @@ export class Scout {
       throw 'Angle may not be 0';
 
     angle = angle * Math.PI / 180;
-    angleSign = Math.sign(angle);
-    radiusLeft = radius + angleSign*halfBase;
-    radiusRight = radius - angleSign*halfBase;
+    let angleSign = Math.sign(angle);
+    let radiusLeft = radius + angleSign*halfBase;
+    let radiusRight = radius - angleSign*halfBase;
 
-    speedSign = Math.sign(speed);
-    angleAbs = Math.abs(angle);
-    speedAbs = Math.abs(speed);
-    speedLeft = speedRight = speedAbs;
+    let speedSign = Math.sign(speed);
+    let angleAbs = Math.abs(angle);
+    let speedAbs = Math.abs(speed);
+    let speedRight;
+    let speedLeft = speedRight = speedAbs;
     if (angle > 0)
       speedRight = Math.abs(speedAbs * radiusRight/radiusLeft);
     else 
@@ -304,7 +307,7 @@ export class Scout {
       right: (args.distance.right === 0) ? 0 :speedRight
     };
 
-    return this.move(args);
+    return this.move(args, undefined);
   }
 
   move(args: any, speed: any): any {
@@ -315,8 +318,8 @@ export class Scout {
       throw 'this.move(args[, speed]): args is object or number';
 
     // optional dist
-    var distLeft, distRight;
-    dist = args.distance || 0;
+    let distLeft, distRight;
+    let dist = args.distance || 0;
     if (typeof args.distance === 'number')
       distLeft = distRight = args.distance;
     else {
@@ -335,9 +338,9 @@ export class Scout {
       speedLeft = speedRight = args.speed;
     else {
       speedLeft = (typeof speed.left === 'number') ? speed.left :
-        ((distLeft === 0) ? 0 : this.model.default.speed);
+        ((distLeft === 0) ? 0 : this._model.default.speed);
       speedRight = (typeof speed.right === 'number') ? speed.right :
-        ((distRight === 0) ? 0 : this.model.default.speed);
+        ((distRight === 0) ? 0 : this._model.default.speed);
     }
 
     if (speedRight > 1 || speedRight < -1 || speedLeft > 1 || speedLeft < -1)
@@ -352,32 +355,32 @@ export class Scout {
       speedRight = Math.abs(speedRight) * Math.sign(distRight);
 
     // optional brake
-    var brakeLeft, brakeRight;
+    let brakeLeft, brakeRight, brake;
     if (args.brake === true)
       brakeLeft = brakeRight = true;
     else {
       brake = args.brake || {};
-      brakeLeft = brake.left || this.model.default.brake;
-      brakeRight = brake.right || this.model.default.brake;
+      brakeLeft = brake.left || this._model.default.brake;
+      brakeRight = brake.right || this._model.default.brake;
     }
 
-    let p = args.p || this.model.default.p || 0;
-    let i = args.i || this.model.default.i || 0;
+    let p = args.p || this._model.default.p || 0;
+    let i = args.i || this._model.default.i || 0;
 
     // Don't use M for simplicity, easier test
-    msg =
-      'L'  + (speedLeft  ? speedToHex(speedLeft)  : '') +
-      ' R' + (speedRight ? speedToHex(speedRight) : '') + ' ' +
-      (brakeLeft  ? 'G' : 'g') + (distLeft  ? distToHex(distLeft)  : '') + ' ' +
-      (brakeRight ? 'H' : 'h') + (distRight ? distToHex(distRight) : '') + ' ';
+    let msg =
+      'L'  + (speedLeft  ? this._speedToHex(speedLeft)  : '') +
+      ' R' + (speedRight ? this._speedToHex(speedRight) : '') + ' ' +
+      (brakeLeft  ? 'G' : 'g') + (distLeft  ? this._distToHex(distLeft)  : '') + ' ' +
+      (brakeRight ? 'H' : 'h') + (distRight ? this._distToHex(distRight) : '') + ' ';
 
     // Check if disconnected
-    args.success = (this.isConnected());
+    args.success = (this.connected());
     if (args.success) {
       if (distLeft !== 0 || distRight !== 0) {
-        this.cmd.id++;
-        this.cmd.active = true;
-        msg += 'i' + this.cmd.id.toString(16);
+        this._cmd.id++;
+        this._cmd.active = true;
+        msg += 'i' + this._cmd.id.toString(16);
         if (distLeft == distRight) {
           if (p)
             msg += ' P' + p.toString(16);
@@ -386,9 +389,9 @@ export class Scout {
         }
         msg += ' ';
       }
-      args.cmd = {id: this.cmd.id};
+      args._cmd = {id: this._cmd.id};
 
-      this._write(msg);
+      this.send(msg);
       this._issueEvent({event: 'move', args: args});
     } else
       this._issueEvent({event: 'moveError', args: args});
@@ -403,7 +406,7 @@ export class Scout {
     if (typeof args !== 'object')
       throw 'this.stop(args) expects object or no argument';
 
-    var brakeLeft, brakeRight;
+    let brakeLeft, brakeRight, brake, msg;
     if (args.brake === true)
       brakeLeft = brakeRight = true;
     else {
@@ -414,15 +417,15 @@ export class Scout {
     // Don't use M to simplify code, testing
     /*
     if (args.brake.left && args.brake.right)
-      msg = "Mffff\r";
+      msg = 'Mffff\r';
     else if (!args.brake.left && !args.brake.right)
-      msg = "M\r";
+      msg = 'M\r';
     else if (args.brake.left)
-      msg = "Lffff R\r";
+      msg = 'Lffff R\r';
     else if (args.brake.right)
-      msg = "Rffff L\r";
+      msg = 'Rffff L\r';
     else
-      throw "Invalid brake value";
+      throw 'Invalid brake value';
     */
     msg = (brakeLeft ? 'Lffff ' : 'L ') + (brakeRight ? 'Rffff ' : 'R ');
     this.send(msg);
@@ -433,7 +436,7 @@ export class Scout {
     return this._cmd.active;
   }
 
-  _isConnected(): boolean {
+  connected(): boolean {
     return this._cmd.id !== -1;
   }
 
@@ -445,7 +448,7 @@ export class Scout {
     return brake ? 'FF00' : '';
   }
 
-  _speedToHex(speed): any {
+  _speedToHex(speed: any): any {
     if (speed === 0)
       return '';
     speed = Math.round(speed * 255);
@@ -455,8 +458,8 @@ export class Scout {
   _distToHex(dist: any): any {
     if (dist === 0)
       return '';
-    dist = Math.round(dist * this.model.encPulsesPerRev /
-      (Math.PI * this.model.wheelDia));
+    dist = Math.round(dist * this._model.encPulsesPerRev /
+      (Math.PI * this._model.wheelDia));
     return ((dist >= 0) ? dist : (0x100000000 + dist)).toString(16);
   }
   //function speedToSigned(val) {
