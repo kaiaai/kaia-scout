@@ -20,10 +20,12 @@ export class Scout {
   _listener: any;
   _debug: boolean = false;
   _model: any;
+  cmd: any;
+  conn: any;
   static _created: boolean = false;
 
   // TODO events {err: err, event: event, ...} signature
-  // TODO rename _postEvent to _issueEvent
+  // TODO rename _issueEvent to _issueEvent
   // TODO move, turn, stop(?) async
 
   constructor() {
@@ -57,7 +59,7 @@ export class Scout {
   write(text: string) {
     if (this._serial)
       throw 'Serial required';
-    this._postEvent({event: 'write', message: text});
+    this._issueEvent({event: 'write', message: text});
     if (this._debug)
       console.log('this._serial.write(text) ' + text);
     const res: any = this._serial.write(text);
@@ -66,12 +68,12 @@ export class Scout {
 
   serialEventListener(err: any, info: any) {
     // Forward raw message
-    this._postEvent(info);
+    this._issueEvent(info);
 
     // kaia.btc.on() calls it
     if (info.event === 'disconnected') {
       if (this.isConnected() && this.cmd.active) {
-        this.postEvent({event: 'moveError', id: this.cmd.id});
+        this._issueEvent({event: 'moveError', id: this.cmd.id});
       }
       this.cmd.id = -1;
       this.cmd.active = false;
@@ -111,7 +113,7 @@ export class Scout {
         msg.vcc = parseInt(json.V, 16);
         msg.fw = json.v;
       }
-      this.postEvent({event: 'parsed', msg: msg});
+      this._issueEvent({event: 'parsed', msg: msg});
         
       // TODO move on('moveProgress')
       if (!this.isConnected()) {
@@ -122,12 +124,12 @@ export class Scout {
                  this.cmd.id === msg.cmd.id &&
                  msg.cmd.active === false) {
         this.cmd.active = false;
-        this.postEvent({event: 'moveComplete', id: msg.cmd.id});        
+        this._issueEvent({event: 'moveComplete', id: msg.cmd.id});        
       }
 
       this.model = this.updateModel(
         this.model, msg);
-      this.postEvent({event: 'model', model: this.model});
+      this._issueEvent({event: 'model', model: this.model});
     }
   }
 
@@ -140,16 +142,16 @@ export class Scout {
     this._debug = debug;
   }
 
-  _postEvent(event: any) {
+  _issueEvent(event: any) {
     // TODO err, data signature
     // TODO rename to issueEvent
     if (this._debug)
-      console.log('this._postEvent(event) ' + JSON.stringify(event));
+      console.log('_issueEvent(event) ' + JSON.stringify(event));
     if (this._listener)
       this._listener(event);
   }
 	
-  _initModel()  {
+  _initModel(): any  {
     this._model = {
       time: 0, // sec
       dTime: 0,
@@ -387,9 +389,9 @@ export class Scout {
       args.cmd = {id: this.cmd.id};
 
       this._write(msg);
-      this._postEvent({event: 'move', args: args});
+      this._issueEvent({event: 'move', args: args});
     } else
-      this._postEvent({event: 'moveError', args: args});
+      this._issueEvent({event: 'moveError', args: args});
 
     return args;
   }
@@ -424,7 +426,7 @@ export class Scout {
     */
     msg = (brakeLeft ? 'Lffff ' : 'L ') + (brakeRight ? 'Rffff ' : 'R ');
     this.send(msg);
-    this.postEvent({event: 'stop', args: args});
+    this._issueEvent({event: 'stop', args: args});
   }
 
   _isCmdActive(): boolean {
