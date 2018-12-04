@@ -16,6 +16,8 @@
  */
 
 export class Scout {
+  _resolveFunc: Function | null = null;
+  _rejectFunc: Function | null = null;
   _serial: any;
   _listener: any;
   _debug: boolean = false;
@@ -23,10 +25,6 @@ export class Scout {
   _cmd: any;
   _conn: any;
   static _created: boolean = false;
-
-  // TODO events {err: err, event: event, ...} signature
-  // TODO rename _issueEvent to _issueEvent
-  // TODO move, turn, stop(?) async
 
   constructor() {
     if (Scout._created)
@@ -36,7 +34,7 @@ export class Scout {
 
   async init(params: any): Promise<any> {
     params = params || {};
-    this.setSerial(params.serial);
+    this.serial(params.serial);
     this.setEventListener(params.eventListener);
     this.debug(params.debug);
 
@@ -44,9 +42,10 @@ export class Scout {
     this._initModel();
     this._conn.autoDetect = true;
     this._cmd = {id: -1, active: false};		
+    return this._makePromise();
   }
 	
-  setSerial(serial: any) {
+  serial(serial: any) {
     if (!serial || typeof serial === 'function') {
       if (this._serial)
         this._serial.setEventListener(null);
@@ -54,12 +53,13 @@ export class Scout {
     }
     if (this._serial)
       this._serial.setEventListener(this._serialEventListener);
+    return this._serial;
   }
 
   send(text: string) {
     if (this._serial)
       throw 'Serial required';
-    this._issueEvent({event: 'write', message: text});
+    this._issueEvent({event: 'write', message: text, err: false});
     if (this._debug)
       console.log('this._serial.write(text) ' + text);
     const res: any = this._serial.write(text);
@@ -71,17 +71,17 @@ export class Scout {
     this._issueEvent(info);
 
     // kaia.btc.on() calls it
-    if (info.event === 'disconnected') {
-      if (this.connected() && this._cmd.active) {
-        this._issueEvent({event: 'moveError', id: this._cmd.id});
-      }
+    if (info.event === 'usbDeviceDisconnected') {
+      if (this.connected() && this._cmd.active)
+        this._issueEvent({event: 'moveError', err: 'Disconnected', id: this._cmd.id});
       this._cmd.id = -1;
       this._cmd.active = false;
+      this._reject('Disconnected');
     } else if (info.event === 'received') {
       let json;
       try {
         // "TBCB5F20 L221 R280 f291 l209 rD3 b1F3 t0 i25 VFFF v0.2.1\r"
-        var s = '{'+(' '+info.msg).replace(/\r/g, '').replace(/ ([TLRVIflrbtvi])/g, '","$1":"').substr(2)+'"}';
+        let s = '{'+(' '+info.message).replace(/\r/g, '').replace(/ ([TLRVIflrbtvi])/g, '","$1":"').substr(2)+'"}';
         json = JSON.parse(s);
       } catch(error) {
         // Skip malformed message
@@ -115,22 +115,26 @@ export class Scout {
         msg.vcc = parseInt(json.V, 16);
         msg.fw = json.v;
       }
-      this._issueEvent({event: 'parsed', msg: msg});
+      this._issueEvent({event: 'parsed', message: msg, err: false});
         
       // TODO move on('moveProgress')
       if (!this.connected()) {
         // (re)started receiving
         this._cmd.id = msg._cmd.id;
         this._cmd.active = msg._cmd.active;
+        this._issueEvent({event: 'connected', err: false, id: this._cmd.id});
+        this._resolve(this);
       } else if (this._cmd.active &&
                  this._cmd.id === msg._cmd.id &&
                  msg._cmd.active === false) {
         this._cmd.active = false;
-        this._issueEvent({event: 'moveComplete', id: msg._cmd.id});        
+        this._issueEvent({event: 'moveComplete', id: msg._cmd.id, err: false});
+        this._resolve(this);
       }
 
+      this._issueEvent({event: 'modelUpdating', model: this._model, err: false});
       this._model = this._updateModel(this._model, msg);
-      this._issueEvent({event: 'model', model: this._model});
+      this._issueEvent({event: 'modelUpdated', model: this._model, err: false});
     }
   }
 
@@ -181,7 +185,7 @@ export class Scout {
 
   _updateModel(model: any, msg: any): any {
     // TODO handle 32-bit encoder overflow
-    var newModel = Object.assign({}, model);
+    let newModel = Object.assign({}, model);
     let encToMeters = Math.PI * model.wheelDia / model.encPulsesPerRev;
     newModel.time = msg.timeStamp / 1000000;
     newModel.dTime = newModel.time - model.time;
@@ -239,19 +243,14 @@ export class Scout {
     return newModel;
   }
 
-  setModel(model: any) {
-    Object.assign(this._model, model);
-  }
-
-  getModel() {
+  model(model: any) {
+    if (model)
+      //Object.assign(this._model, model);
+      this._model = model;
     return this._model;
-  };
-
-  //  this.comm = function() {};
-  //  this._cmd = function() {};
-  //  this.comm.conn = function() {};
+  }
   
-  turn(angle: any, speed: any, args: any): any {
+  turn(angle: any, speed: any, args: any): Promise<any> {
     // angle in degrees; speed relative (for now)
     // args: stop, radius
 
@@ -310,7 +309,7 @@ export class Scout {
     return this.move(args, undefined);
   }
 
-  move(args: any, speed: any): any {
+  move(args: any, speed: any): Promise<any> {
     args = args || {};
     if (typeof args === 'number')
       args = { 'distance': args };
@@ -329,7 +328,7 @@ export class Scout {
 
     // TODO relative vs absolute speed
     // speed
-    var speedLeft, speedRight;
+    let speedLeft, speedRight;
     if (speed !== undefined)
       args.speed = speed;
     speed = args.speed || 0;
@@ -392,19 +391,22 @@ export class Scout {
       args._cmd = {id: this._cmd.id};
 
       this.send(msg);
-      this._issueEvent({event: 'move', args: args});
-    } else
-      this._issueEvent({event: 'moveError', args: args});
+      this._issueEvent({event: 'move', args: args, err: false});
+    } else {
+      //this._issueEvent({event: 'moveError', args: args, err: 'Invalid parameters'});
+      throw 'Invalid parameters';
+    }
 
-    return args;
+    //return args;
+    return this._makePromise();
   }
 
-  stop(args: any) {
+  stop(args: any): Promise<any> {
     // {brake=true/false, brake: {left: true, right: false}
     // default brake=false
     args = args || {};
     if (typeof args !== 'object')
-      throw 'this.stop(args) expects object or no argument';
+      throw 'Invalid arguments';
 
     let brakeLeft, brakeRight, brake, msg;
     if (args.brake === true)
@@ -429,10 +431,12 @@ export class Scout {
     */
     msg = (brakeLeft ? 'Lffff ' : 'L ') + (brakeRight ? 'Rffff ' : 'R ');
     this.send(msg);
-    this._issueEvent({event: 'stop', args: args});
+    this._issueEvent({event: 'stop', args: args, err: false});
+    
+    return Promise.resolve(this);
   }
 
-  _isCmdActive(): boolean {
+  busy(): boolean {
     return this._cmd.active;
   }
 
@@ -465,6 +469,32 @@ export class Scout {
   //function speedToSigned(val) {
   //  return (val & 0x8000) ? val - 0x10000 : val;
   //} 
+  _clearCallback(): void {
+    this._resolveFunc = null;
+    this._rejectFunc = null;
+  }
+
+  _resolve(res: any): void {
+    let cb = this._resolveFunc;
+    this._clearCallback();
+    if (cb !== null)
+      cb(res);
+  }
+
+  _reject(err: any): void {
+    let cb = this._rejectFunc;
+    this._clearCallback();
+    if (cb !== null)
+      cb(err);
+  }  
+
+  _makePromise(): Promise<any> {
+    let promise = new Promise<any>((resolve, reject) => {
+      this._resolveFunc = resolve;
+      this._rejectFunc = reject;
+    });
+    return promise;
+  }
 }
 
 let scout: Scout;
