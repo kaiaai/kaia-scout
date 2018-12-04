@@ -15,6 +15,8 @@
  * =============================================================================
  */
 export declare class Scout {
+    _resolveFunc: Function | null;
+    _rejectFunc: Function | null;
     _serial: any;
     _listener: any;
     _debug: boolean;
@@ -24,7 +26,7 @@ export declare class Scout {
     static _created: boolean;
     constructor();
     init(params: any): Promise<any>;
-    setSerial(serial: any): void;
+    serial(serial: any): any;
     send(text: string): any;
     _serialEventListener(err: any, info: any): void;
     setEventListener(listener: any): void;
@@ -32,16 +34,19 @@ export declare class Scout {
     _issueEvent(event: any): void;
     _initModel(): any;
     _updateModel(model: any, msg: any): any;
-    setModel(model: any): void;
-    getModel(): any;
-    turn(angle: any, speed: any, args: any): any;
-    move(args: any, speed: any): any;
-    stop(args: any): void;
-    _isCmdActive(): boolean;
+    model(model: any): any;
+    turn(angle: any, speed: any, args: any): Promise<any>;
+    move(args: any, speed: any): Promise<any>;
+    stop(args: any): Promise<any>;
+    busy(): boolean;
     connected(): boolean;
     _encToSigned(val: any): any;
     _stopToSpeed(brake: boolean): any;
     _speedToHex(speed: any): any;
     _distToHex(dist: any): any;
+    _clearCallback(): void;
+    _resolve(res: any): void;
+    _reject(err: any): void;
+    _makePromise(): Promise<any>;
 }
 export declare function createScout(params: any): Promise<any>;

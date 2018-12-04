@@ -18,10 +18,9 @@ var kaiaScoutJs = (function (exports) {
  * =============================================================================
  */
 class Scout {
-    // TODO events {err: err, event: event, ...} signature
-    // TODO rename _issueEvent to _issueEvent
-    // TODO move, turn, stop(?) async
     constructor() {
+        this._resolveFunc = null;
+        this._rejectFunc = null;
         this._debug = false;
         if (Scout._created)
             throw 'Only one instance allowed';
@@ -29,15 +28,16 @@ class Scout {
     }
     async init(params) {
         params = params || {};
-        this.setSerial(params.serial);
+        this.serial(params.serial);
         this.setEventListener(params.eventListener);
         this.debug(params.debug);
         // TODO remove : from Scout messages  
         this._initModel();
         this._conn.autoDetect = true;
         this._cmd = { id: -1, active: false };
+        return this._makePromise();
     }
-    setSerial(serial) {
+    serial(serial) {
         if (!serial || typeof serial === 'function') {
             if (this._serial)
                 this._serial.setEventListener(null);
@@ -45,11 +45,12 @@ class Scout {
         }
         if (this._serial)
             this._serial.setEventListener(this._serialEventListener);
+        return this._serial;
     }
     send(text) {
         if (this._serial)
             throw 'Serial required';
-        this._issueEvent({ event: 'write', message: text });
+        this._issueEvent({ event: 'write', message: text, err: false });
         if (this._debug)
             console.log('this._serial.write(text) ' + text);
         const res = this._serial.write(text);
@@ -59,18 +60,18 @@ class Scout {
         // Forward raw message
         this._issueEvent(info);
         // kaia.btc.on() calls it
-        if (info.event === 'disconnected') {
-            if (this.connected() && this._cmd.active) {
-                this._issueEvent({ event: 'moveError', id: this._cmd.id });
-            }
+        if (info.event === 'usbDeviceDisconnected') {
+            if (this.connected() && this._cmd.active)
+                this._issueEvent({ event: 'moveError', err: 'Disconnected', id: this._cmd.id });
             this._cmd.id = -1;
             this._cmd.active = false;
+            this._reject('Disconnected');
         }
         else if (info.event === 'received') {
             let json;
             try {
                 // "TBCB5F20 L221 R280 f291 l209 rD3 b1F3 t0 i25 VFFF v0.2.1\r"
-                var s = '{' + (' ' + info.msg).replace(/\r/g, '').replace(/ ([TLRVIflrbtvi])/g, '","$1":"').substr(2) + '"}';
+                let s = '{' + (' ' + info.message).replace(/\r/g, '').replace(/ ([TLRVIflrbtvi])/g, '","$1":"').substr(2) + '"}';
                 json = JSON.parse(s);
             }
             catch (error) {
@@ -106,21 +107,25 @@ class Scout {
                 msg.vcc = parseInt(json.V, 16);
                 msg.fw = json.v;
             }
-            this._issueEvent({ event: 'parsed', msg: msg });
+            this._issueEvent({ event: 'parsed', message: msg, err: false });
             // TODO move on('moveProgress')
             if (!this.connected()) {
                 // (re)started receiving
                 this._cmd.id = msg._cmd.id;
                 this._cmd.active = msg._cmd.active;
+                this._issueEvent({ event: 'connected', err: false, id: this._cmd.id });
+                this._resolve(this);
             }
             else if (this._cmd.active &&
                 this._cmd.id === msg._cmd.id &&
                 msg._cmd.active === false) {
                 this._cmd.active = false;
-                this._issueEvent({ event: 'moveComplete', id: msg._cmd.id });
+                this._issueEvent({ event: 'moveComplete', id: msg._cmd.id, err: false });
+                this._resolve(this);
             }
+            this._issueEvent({ event: 'modelUpdating', model: this._model, err: false });
             this._model = this._updateModel(this._model, msg);
-            this._issueEvent({ event: 'model', model: this._model });
+            this._issueEvent({ event: 'modelUpdated', model: this._model, err: false });
         }
     }
     setEventListener(listener) {
@@ -131,12 +136,10 @@ class Scout {
         this._debug = debug;
     }
     _issueEvent(event) {
-        // TODO err, data signature
-        // TODO rename to issueEvent
         if (this._debug)
             console.log('_issueEvent(event) ' + JSON.stringify(event));
         if (this._listener)
-            this._listener(event);
+            this._listener(event.err, event);
     }
     _initModel() {
         this._model = {
@@ -166,7 +169,7 @@ class Scout {
     }
     _updateModel(model, msg) {
         // TODO handle 32-bit encoder overflow
-        var newModel = Object.assign({}, model);
+        let newModel = Object.assign({}, model);
         let encToMeters = Math.PI * model.wheelDia / model.encPulsesPerRev;
         newModel.time = msg.timeStamp / 1000000;
         newModel.dTime = newModel.time - model.time;
@@ -222,16 +225,12 @@ class Scout {
         newModel.angularAccel = dAngularSpeed / newModel.dTime;
         return newModel;
     }
-    setModel(model) {
-        Object.assign(this._model, model);
-    }
-    getModel() {
+    model(model) {
+        if (model)
+            //Object.assign(this._model, model);
+            this._model = model;
         return this._model;
     }
-    ;
-    //  this.comm = function() {};
-    //  this._cmd = function() {};
-    //  this.comm.conn = function() {};
     turn(angle, speed, args) {
         // angle in degrees; speed relative (for now)
         // args: stop, radius
@@ -301,7 +300,7 @@ class Scout {
         }
         // TODO relative vs absolute speed
         // speed
-        var speedLeft, speedRight;
+        let speedLeft, speedRight;
         if (speed !== undefined)
             args.speed = speed;
         speed = args.speed || 0;
@@ -354,18 +353,21 @@ class Scout {
             }
             args._cmd = { id: this._cmd.id };
             this.send(msg);
-            this._issueEvent({ event: 'move', args: args });
+            this._issueEvent({ event: 'move', args: args, err: false });
         }
-        else
-            this._issueEvent({ event: 'moveError', args: args });
-        return args;
+        else {
+            //this._issueEvent({event: 'moveError', args: args, err: 'Invalid parameters'});
+            throw 'Invalid parameters';
+        }
+        //return args;
+        return this._makePromise();
     }
     stop(args) {
         // {brake=true/false, brake: {left: true, right: false}
         // default brake=false
         args = args || {};
         if (typeof args !== 'object')
-            throw 'this.stop(args) expects object or no argument';
+            throw 'Invalid arguments';
         let brakeLeft, brakeRight, brake, msg;
         if (args.brake === true)
             brakeLeft = brakeRight = true;
@@ -389,9 +391,10 @@ class Scout {
         */
         msg = (brakeLeft ? 'Lffff ' : 'L ') + (brakeRight ? 'Rffff ' : 'R ');
         this.send(msg);
-        this._issueEvent({ event: 'stop', args: args });
+        this._issueEvent({ event: 'stop', args: args, err: false });
+        return Promise.resolve(this);
     }
-    _isCmdActive() {
+    busy() {
         return this._cmd.active;
     }
     connected() {
@@ -415,6 +418,32 @@ class Scout {
         dist = Math.round(dist * this._model.encPulsesPerRev /
             (Math.PI * this._model.wheelDia));
         return ((dist >= 0) ? dist : (0x100000000 + dist)).toString(16);
+    }
+    //function speedToSigned(val) {
+    //  return (val & 0x8000) ? val - 0x10000 : val;
+    //} 
+    _clearCallback() {
+        this._resolveFunc = null;
+        this._rejectFunc = null;
+    }
+    _resolve(res) {
+        let cb = this._resolveFunc;
+        this._clearCallback();
+        if (cb !== null)
+            cb(res);
+    }
+    _reject(err) {
+        let cb = this._rejectFunc;
+        this._clearCallback();
+        if (cb !== null)
+            cb(err);
+    }
+    _makePromise() {
+        let promise = new Promise((resolve, reject) => {
+            this._resolveFunc = resolve;
+            this._rejectFunc = reject;
+        });
+        return promise;
     }
 }
 Scout._created = false;

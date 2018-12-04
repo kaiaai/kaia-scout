@@ -1,7 +1,7 @@
 import typescript from 'rollup-plugin-typescript2';
 
 export default {
-  input: 'src/kaia-scout.ts',
+  input: 'src/scout.ts',
   plugins: [typescript()],
   output: [{
     file: 'dist/kaia-scout-iife.js',

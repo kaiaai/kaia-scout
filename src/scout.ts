@@ -148,12 +148,10 @@ export class Scout {
   }
 
   _issueEvent(event: any) {
-    // TODO err, data signature
-    // TODO rename to issueEvent
     if (this._debug)
       console.log('_issueEvent(event) ' + JSON.stringify(event));
     if (this._listener)
-      this._listener(event);
+      this._listener(event.err, event);
   }
 	
   _initModel(): any  {
