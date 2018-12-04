@@ -28,24 +28,27 @@ class Scout {
     }
     async init(params) {
         params = params || {};
-        this.serial(params.serial);
         this.setEventListener(params.eventListener);
         this.debug(params.debug);
         // TODO remove : from Scout messages  
         this._initModel();
-        this._conn.autoDetect = true;
         this._cmd = { id: -1, active: false };
+        this.serial(params.serial);
         return this._makePromise();
     }
     serial(serial) {
-        if (!serial || typeof serial === 'function') {
+        if (!serial || typeof serial === 'object') {
             if (this._serial)
                 this._serial.setEventListener(null);
             this._serial = serial;
         }
         if (this._serial)
-            this._serial.setEventListener(this._serialEventListener);
+            this._serial.setEventListener(Scout._serialEventListener);
         return this._serial;
+    }
+    static _serialEventListener(err, info) {
+        if (Scout.scout)
+            Scout.scout._parseSerialMessage(err, info);
     }
     send(text) {
         if (this._serial)
@@ -56,7 +59,7 @@ class Scout {
         const res = this._serial.write(text);
         return res.err;
     }
-    _serialEventListener(err, info) {
+    _parseSerialMessage(err, info) {
         // Forward raw message
         this._issueEvent(info);
         // kaia.btc.on() calls it
@@ -70,19 +73,19 @@ class Scout {
         else if (info.event === 'received') {
             let json;
             try {
-                // "TBCB5F20 L221 R280 f291 l209 rD3 b1F3 t0 i25 VFFF v0.2.1\r"
-                let s = '{' + (' ' + info.message).replace(/\r/g, '').replace(/ ([TLRVIflrbtvi])/g, '","$1":"').substr(2) + '"}';
+                // "TBCB5F20 L221 R280 f291 l209 rD3 b1F3 t0 i25 VFFF v0.2.1\r\n"
+                let s = '{' + (' ' + info.message).replace(/[\r\n]+/g, '').replace(/ ([TLRVIflrbtvi])/g, '","$1":"').substr(2) + '"}';
                 json = JSON.parse(s);
             }
             catch (error) {
                 // Skip malformed message
+                this._issueEvent({ event: 'parsed', err: 'Malformed message', message: info.message });
                 return;
             }
             if (!json.T || !json.L || !json.R || !json.f || !json.l ||
                 !json.r || !json.b || !json.t)
                 return; // Skip malformed message
-            let msg;
-            msg = {
+            let msg = {
                 timeStamp: parseInt(json.T, 16),
                 encLeft: this._encToSigned(parseInt(json.L, 16)),
                 encRight: this._encToSigned(parseInt(json.R, 16)),
@@ -91,15 +94,15 @@ class Scout {
                 distRight: parseInt(json.r, 16),
                 distBack: parseInt(json.b, 16),
                 distTop: parseInt(json.t, 16),
-                cmd: { id: 0, active: false }
+                cmd: { id: 0, active: false },
             };
             if (json.i) {
-                msg._cmd.id = parseInt(json.i, 16);
-                msg._cmd.active = false;
+                msg.cmd.id = parseInt(json.i, 16);
+                msg.cmd.active = false;
             }
             else if (json.I) {
-                msg._cmd.id = parseInt(json.I, 16);
-                msg._cmd.active = true;
+                msg.cmd.id = parseInt(json.I, 16);
+                msg.cmd.active = true;
             }
             else
                 return; // Skip malformed message
@@ -111,16 +114,16 @@ class Scout {
             // TODO move on('moveProgress')
             if (!this.connected()) {
                 // (re)started receiving
-                this._cmd.id = msg._cmd.id;
-                this._cmd.active = msg._cmd.active;
+                this._cmd.id = msg.cmd.id;
+                this._cmd.active = msg.cmd.active;
                 this._issueEvent({ event: 'connected', err: false, id: this._cmd.id });
                 this._resolve(this);
             }
             else if (this._cmd.active &&
-                this._cmd.id === msg._cmd.id &&
-                msg._cmd.active === false) {
+                this._cmd.id === msg.cmd.id &&
+                msg.cmd.active === false) {
                 this._cmd.active = false;
-                this._issueEvent({ event: 'moveComplete', id: msg._cmd.id, err: false });
+                this._issueEvent({ event: 'moveComplete', id: msg.cmd.id, err: false });
                 this._resolve(this);
             }
             this._issueEvent({ event: 'modelUpdating', model: this._model, err: false });
@@ -447,12 +450,11 @@ class Scout {
     }
 }
 Scout._created = false;
-let scout;
 async function createScout(params) {
-    if (scout)
-        return Promise.resolve(scout);
-    scout = new Scout();
-    return scout.init(params);
+    if (Scout.scout)
+        return Promise.resolve(Scout.scout);
+    Scout.scout = new Scout();
+    return Scout.scout.init(params);
 }
 
 exports.Scout = Scout;

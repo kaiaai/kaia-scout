@@ -23,12 +23,14 @@ export declare class Scout {
     _model: any;
     _cmd: any;
     _conn: any;
+    static scout: Scout | undefined;
     static _created: boolean;
     constructor();
     init(params: any): Promise<any>;
     serial(serial: any): any;
+    static _serialEventListener(err: any, info: any): void;
     send(text: string): any;
-    _serialEventListener(err: any, info: any): void;
+    _parseSerialMessage(err: any, info: any): void;
     setEventListener(listener: any): void;
     debug(debug: boolean): void;
     _issueEvent(event: any): void;
