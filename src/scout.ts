@@ -28,9 +28,9 @@ export class Scout {
   static _created: boolean = false;
 
   constructor() {
-    if (Scout._created)
+    if (Scout.scout)
       throw 'Only one instance allowed';
-    Scout._created = true;
+    Scout.scout = this;
   }
 
   async init(params: any): Promise<any> {
