@@ -1,6 +1,6 @@
 {
     "name": "kaia-scout.js",
-    "version": "0.0.1",
+    "version": "0.1.0",
     "description": "JS library for Kaia.ai Scout robot base",
     "main": "./dist/kaia-scout-cjs.js",
     "module": "./dist/kaia-scout.mjs",
@@ -19,21 +19,14 @@
     },
     "keywords": [
         "kaia.ai",
+        "kaia-ai",
+        "kaiaai",
+        "kaia"
         "robot",
         "robot-base",
+        "robot base",
         "robotics",
-        "arduino",
-        "deep learning",
-        "tensorflow",
-        "slam",
-        "robot",
-        "self-driving",
-        "image recognition",
-        "image classification",
-        "tensorflow.js",
-        "speech recognition",
-        "kaia",
-        "messaging"
+        "arduino"
     ],
     "author": "OOMWOO LLC",
     "license": "Apache-2.0",

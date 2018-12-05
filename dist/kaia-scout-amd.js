@@ -50,7 +50,7 @@ class Scout {
             Scout.scout._parseSerialMessage(err, info);
     }
     send(text) {
-        if (this._serial)
+        if (!this._serial)
             throw 'Serial required';
         this._issueEvent({ event: 'write', message: text, err: false });
         if (this._debug)
