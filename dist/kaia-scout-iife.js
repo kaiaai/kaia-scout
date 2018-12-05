@@ -22,9 +22,9 @@ class Scout {
         this._resolveFunc = null;
         this._rejectFunc = null;
         this._debug = false;
-        if (Scout._created)
+        if (Scout.scout)
             throw 'Only one instance allowed';
-        Scout._created = true;
+        Scout.scout = this;
     }
     async init(params) {
         params = params || {};
