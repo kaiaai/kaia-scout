@@ -372,8 +372,10 @@ export class Scout {
 
     // Don't use M for simplicity, easier test
     let msg =
-      'L'  + (speedLeft  ? this._speedToHex(speedLeft)  : '') +
-      ' R' + (speedRight ? this._speedToHex(speedRight) : '') + ' ' +
+//      'L'  + (speedLeft  ? this._speedToHex(speedLeft)  : '') +
+//      ' R' + (speedRight ? this._speedToHex(speedRight) : '') + ' ' +
+      'L'  + this._speedToHex(speedLeft) +
+      ' R' + this._speedToHex(speedRight) + ' ' +
       (brakeLeft  ? 'G' : 'g') + (distLeft  ? this._distToHex(distLeft)  : '') + ' ' +
       (brakeRight ? 'H' : 'h') + (distRight ? this._distToHex(distRight) : '') + ' ';
 
@@ -457,7 +459,8 @@ export class Scout {
   }
 
   _speedToHex(speed: any): any {
-    if (speed === 0)
+//    if (speed === 0)
+    if (!speed)
       return '';
     speed = Math.round(speed * 255);
     return ((speed >= 0) ? speed : (0x10000 + speed)).toString(16);

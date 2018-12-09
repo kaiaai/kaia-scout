@@ -334,8 +334,11 @@ class Scout {
         let p = args.p || this._model.default.p || 0;
         let i = args.i || this._model.default.i || 0;
         // Don't use M for simplicity, easier test
-        let msg = 'L' + (speedLeft ? this._speedToHex(speedLeft) : '') +
-            ' R' + (speedRight ? this._speedToHex(speedRight) : '') + ' ' +
+        let msg = 
+        //      'L'  + (speedLeft  ? this._speedToHex(speedLeft)  : '') +
+        //      ' R' + (speedRight ? this._speedToHex(speedRight) : '') + ' ' +
+        'L' + this._speedToHex(speedLeft) +
+            ' R' + this._speedToHex(speedRight) + ' ' +
             (brakeLeft ? 'G' : 'g') + (distLeft ? this._distToHex(distLeft) : '') + ' ' +
             (brakeRight ? 'H' : 'h') + (distRight ? this._distToHex(distRight) : '') + ' ';
         // Check if disconnected
@@ -409,7 +412,8 @@ class Scout {
         return brake ? 'FF00' : '';
     }
     _speedToHex(speed) {
-        if (speed === 0)
+        //    if (speed === 0)
+        if (!speed)
             return '';
         speed = Math.round(speed * 255);
         return ((speed >= 0) ? speed : (0x10000 + speed)).toString(16);
